@@ -1,0 +1,717 @@
+/**
+ * Created by 00322027 on 2017/9/25.
+ */
+import React, { Component } from 'react';
+import {
+    AppRegistry,
+    StyleSheet,
+    Text,
+    View,
+    Image,
+    ScrollView,
+    RecyclerViewBackedScrollView,
+    ListView,
+    TouchableHighlight,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    PanResponder,
+    Dimensions,
+    PixelRatio,
+    Modal,
+    ActivityIndicator,
+    AlertIOS,
+    Alert,
+    DeviceEventEmitter
+} from 'react-native';
+import BaseComponent from "../../common/BaseComponent"
+const RNBridgeManager= require('react-native').NativeModules.IWWRNBridgeManager;
+//const rnManager = require('react-native').NativeModules.IWWRNBridgeManager;
+import TextActivity from './TextActivity';
+import NavigationBar from '../../common/element/NavigationBar';
+
+const pt2px = pt=>PixelRatio.getPixelSizeForLayoutSize(pt);
+const px2pt = px=>PixelRatio.roundToNearestPixel(px);
+const textWidth = 80;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+var containerWidth = (SCREEN_WIDTH - px2pt(40))/4 - px2pt(5);
+var containerHeight = containerHeight + px2pt(5);
+var moveHeight = 110;
+if(SCREEN_WIDTH>400){  // 对于SCREEN_WIDTH等于414的屏幕来说,要减小长宽
+    containerWidth = containerWidth - px2pt(10);
+    containerHeight = containerHeight - px2pt(10);
+}
+if(containerHeight>800){
+    moveHeight = 0;
+}else if(containerHeight<680){
+    moveHeight = 88;
+}
+export default class ApplicationCenterEdit extends BaseComponent{
+
+    constructor(props){
+        super(props);
+        // 初始化数据
+        this.myapps = [];
+        this.application= [];
+        this.items = [];
+        this.order = [];
+        this.widthSreen = (Dimensions.get('window').width-10)/4;
+
+        this.itemsApp = [];
+        this.orderApp = [];
+
+        this.state = {
+            loadFlag : false,
+            showMsg: false,
+
+            shortcut_icon_bg:"shortcut_icon_bg",
+            button_dzqh:"button_dzqh",
+            button_wdkq:"button_wdkq",
+            button_jtgg:"button_jtgg",
+            button_ygsr:"button_ygsr",
+            button_syxj:"button_syxj",
+            button_yxphb:"button_yxphb",
+            button_cpzx:"button_cpzx",
+            bpm_icon_home:"bpm_icon_home",
+            navbar:"navbar",
+            shortcut_icon_del:"shortcut_icon_del",
+            shortcut_icon_default:"shortcut_icon_default",
+            shortcut_icon_add:"shortcut_icon_add",
+        }
+    }
+
+    // 换肤调用
+    updateSkin(params) {
+        var imageList = new Array();
+        imageList.push('shortcut_icon_bg');
+        imageList.push('button_dzqh');
+        imageList.push('button_wdkq');
+        imageList.push('button_jtgg');
+        imageList.push('button_ygsr');
+        imageList.push('button_syxj');
+        imageList.push('button_yxphb');
+        imageList.push('button_cpzx');
+        imageList.push('bpm_icon_home');
+        imageList.push('navbar');
+        imageList.push('bpm_icon_home');
+        imageList.push('navbar');
+        RNBridgeManager.getImages(imageList,(result)=>{
+            this.setState(result)
+        })
+    }
+
+    static navigationOptions = {
+        header:null
+    }
+
+    // 修改提交
+    update = () => {
+        var newapplist = [];
+        // 1、把用户选好的，排好顺序的加入数组
+        for(var i=0;i<this.order.length;i++){
+            var myapp = {};
+            myapp.appId = this.order[i].appId;
+            myapp.myAppList = 1;
+            newapplist.push(myapp);
+        }
+        // 2、把其他的加入数组
+        for(var index=0;index<this.application.length;index++){
+            if(this._hasInMyapps(this.application,index)){
+                continue;
+            }
+            var otherApp = {};
+            otherApp.appId = this.application[index].appId;
+            otherApp.myAppList = 0;
+            newapplist.push(otherApp);
+        }
+        console.log("newapplist:" + newapplist + newapplist.length);
+        // 3、提交数据
+        if(newapplist.length == 0){
+            this.props.navigation.navigate('AppCenter');
+        }else {
+            RNBridgeManager.updateAppList(newapplist, (error, result) => {
+                if (error) {
+                    AlertIOS.alert('提示', '数据提交失败', [
+                        {
+                            text: "知道了"
+                        }
+                    ])
+                    return;
+                } else {
+                    //alert('提交成功！');
+
+                    this.props.navigation.state.params.refresh();
+                    //调用事件通知  param是指传递的相应参数
+                    //DeviceEventEmitter.emit('AppCenter',1);
+                    this.props.navigation.goBack();
+                    // this.props.navigation.navigate('AppCenter')
+                }
+            });
+        }
+    };
+
+    // 得到被去掉的应用在this.order里面的位置
+    _getCutindexoforder(item){
+        var index = 0;
+        for(index;index<this.order.length;index++){
+            if(item === this.order[index].appName){
+                return index;
+            }
+        }
+        return index;
+    }
+
+    // 点击右上角的按钮
+    _pressIcon(apps,num,type){
+
+        if(type == 1){
+            //从this.myapps里面去掉这个item
+            var cutindexoforder = this._getCutindexoforder(this.myapps[num].appName);
+            console.log("cutindexoforder:" + cutindexoforder);
+            // 将this.order的从cutindexoforder开始的数改为后面的
+            for(var q=cutindexoforder;q<this.order.length-1;q++){
+                this.order[q] = this.order[q+1];
+                [this.items[q], this.items[q+1]] = [this.items[q+1], this.items[q]];
+            }
+
+            // 删除最后一个数值
+            this.order.splice(this.order.length-1,1);
+            this.items.splice(this.items.length-1,1);
+            // 先将this.myapps 清空
+            for(var i=0;i<this.order.length;i++){
+                this.myapps[i] = this.order[i];
+            }
+            this.myapps.splice(this.myapps.length-1,1);
+            this.order = [];
+
+            this.forceUpdate();
+        }else if(type == 2){
+            if(!this._hasInMyapps(apps,num)){
+                if(this.myapps.length>=8){
+                    // 如果不加下面这一段，
+                    for(var i=0;i<this.order.length;i++){
+                        this.myapps[i] = this.order[i];
+                    }
+                    this.order = [];
+                    this.setState({ showMsg: true });
+                    // alert("首页最多添加4个应用");
+                }else{
+                    this.myapps.push(apps[num]);
+                    this.items.splice(0,this.items.length);
+                    this.order.splice(0,this.order.length);
+                    this.forceUpdate();
+                }
+            }else{
+                // alert("您已经添加过");
+                // AlertIOS.alert('提示','您已经添加过了',[
+                //     {
+                //         text:"知道了"
+                //     }
+                // ])
+            }
+        }
+    }
+
+    // 判断所有应用中是否已经在我的应用里面了 存在 true 不存在 false
+    _hasInMyapps(application,index){
+        for(var i=0;i<this.myapps.length;i++){
+            if(this.myapps[i].appName == application[index].appName){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 根据应用的名字获得图标
+    // 根据应用的ID获得图标
+    _getApplicationIcons(item){
+        if(item == 'dianziqianheCode'){
+            return {uri:this.state.button_dzqh};
+        }else if(item == 'wodekaoqinCode'){
+            return {uri:this.state.button_wdkq};
+        }else if(item == 'jituangonggaoCode'){
+            return {uri:this.state.button_jtgg};
+        }else if(item == 'yuangongshengriCode'){
+            return {uri:this.state.button_ygsr};
+        }else if(item == 'shuiyinxiangjiCode'){
+            return {uri:this.state.button_syxj};
+        }else if(item == 'yingxiaopaihangbangCode'){
+            return {uri:this.state.button_yxphb};
+        }else if(item == 'chanpinzhongxinCode'){
+            return {uri:this.state.button_cpzx};
+        }else { // 如果都没有匹配上
+            return {uri:this.state.button_cpzx};
+        }
+    }
+
+    renderLoadingView(){
+        return(
+            <View style={styles.containerLoad}>
+                <Text>
+                    正在获取应用数据
+                </Text>
+                <ActivityIndicator
+                    animating={this.animating}
+                    style={[styles.centering, {height: 50}]}
+                    size="small" />
+            </View>
+        );
+    }
+    render(){
+
+        if(!this.state.loadFlag){
+            return this.renderLoadingView();
+        }
+
+        return(
+            <View style={styles.flex}>
+                {/*<View style={styles.header}>*/}
+                    {/*<Image*/}
+                        {/*source={{uri:this.state.navbar}}*/}
+                        {/*style={styles.headerImage}*/}
+                    {/*>*/}
+                    {/*<Text style={{fontSize: px2pt(15), color: '#FFFFFF',marginLeft:px2pt(10),backgroundColor:'transparent'}} onPress={ () => this.props.navigation.goBack()}>取消</Text>*/}
+                    {/*<Text style={{fontSize: px2pt(18), color: '#FFFFFF', backgroundColor:'transparent'}}>我的应用编辑</Text>*/}
+                    {/*<Text style={{fontSize: px2pt(15), color: '#FFFFFF',marginRight:px2pt(10),backgroundColor:'transparent'}} onPress={this.update}>完成</Text>*/}
+                    {/*</Image>*/}
+                {/*</View>*/}
+                <NavigationBar
+                    title="我的应用编辑"
+                    backgroundImageUri={this.state.navbar}
+                    leftButton={
+                        <TouchableOpacity onPress={() => this.props.navigation.goBack()}>
+                            <Text style={{fontSize: px2pt(15), color: '#FFFFFF',marginLeft:px2pt(10),backgroundColor:'transparent'}}>取消</Text>
+                        </TouchableOpacity>}
+                    rightButton={
+                        <TouchableOpacity onPress={this.update}>
+                            <Text style={{fontSize: px2pt(15), color: '#FFFFFF',marginRight:px2pt(10),backgroundColor:'transparent'}}>完成</Text>
+                        </TouchableOpacity>}
+                />
+                <View style={{flexDirection: 'row',height:25,backgroundColor: '#fff',alignItems: 'center',paddingTop:10,marginTop:px2pt(10)}}>
+                    <Image
+                        source={{uri:this.state.navbar}}
+                        style={{width:3,height:15,marginLeft:px2pt(10)}}
+                    />
+                    <Text style={styles.itemTitle}>我的应用</Text>
+                    <Text style={styles.itemTitleDes}>(按住拖动调整顺序)</Text>
+                </View>
+                <View style={styles.containerMy}>
+                    {this.myapps.map((item, i)=>{
+                        this.order.push(item);
+                        return (
+                            <View
+                                {...this._panResponder.panHandlers}
+                                ref={(ref) => this.items[i] = ref}
+                                key={i}
+                                style={[styles.item, {top: (parseInt(i/4))*90 + 10,left:(i%4)*this.widthSreen}]}>
+                                <Image
+                                    source={{uri:this.state.shortcut_icon_bg}}
+                                    style={styles.thumbnail}
+                                />
+                                <Image
+                                    source={this._getApplicationIcons(item.appId)}
+                                    style={styles.thumbnailInside}
+                                />
+                                <TextActivity text={item.appName} width={containerWidth}/>
+                                <TouchableWithoutFeedback onPress={this._pressIcon.bind(this,this.myapps,i,1)} style={styles.buttonRightTop}>
+                                    <Image
+                                        source={{uri:this.state.shortcut_icon_del}}
+                                        style={styles.imageRightTop}
+                                    />
+                                </TouchableWithoutFeedback>
+                            </View>
+                        );
+                    })}
+                </View>
+
+                {/*<View style = {{backgroundColor: '#FFFFFF',marginTop:10,paddingLeft:15,flexDirection: 'row'}}>*/}
+                    {/*<Image*/}
+                        {/*source={{uri:this.state.navbar}}*/}
+                        {/*style={{width:3,height:15,marginTop:5}}*/}
+                    {/*/>*/}
+                    {/*<Text style = {{ fontSize: px2pt(14), color:'#414141',paddingLeft:5,marginTop:5}}>所有应用</Text>*/}
+                {/*</View>*/}
+                <View style={{flexDirection: 'row',height:25,backgroundColor: '#fff',alignItems: 'center',marginTop:10,}}>
+                    <Image
+                        source={{uri:this.state.navbar}}
+                        style={{width:3,height:15,marginLeft:px2pt(10)}}
+                    />
+                    <Text style={styles.itemTitle}>所有应用</Text>
+                </View>
+                <View style={styles.containerAll}>
+                    {this.application.map((item, i)=>{
+                        this.orderApp.push(item);
+                        return (
+                            <View
+                                ref={(ref) => this.itemsApp[i] = ref}
+                                key={i}
+                                style={[styles.item, {top: (parseInt(i/4))*90,left:(i%4)*this.widthSreen}]}>
+                                <Image
+                                    source={{uri:this.state.shortcut_icon_bg}}
+                                    style={styles.thumbnail}
+                                />
+                                <Image
+                                    source={this._getApplicationIcons(item.appId)}
+                                    style={styles.thumbnailInside}
+                                />
+                                <TextActivity text={item.appName} width={containerWidth} />
+                                <TouchableWithoutFeedback onPress={this._pressIcon.bind(this, this.application, i,2)} style={styles.buttonRightTop}>
+                                    <Image source={this._hasInMyapps(this.application, i)?{uri:this.state.shortcut_icon_default}:{uri:this.state.shortcut_icon_add}} style={styles.imageRightTop}/>
+                                </TouchableWithoutFeedback>
+
+                            </View>
+                        );
+                    })}
+                </View>
+                <NoticeMsg visible={this.state.showMsg} onShowMsg={this._handleNoticeMsgVisible} />
+            </View>
+        );
+    }
+
+    componentWillMount(){
+        this._panResponder = PanResponder.create({
+            onStartShouldSetPanResponder: (evt, gestureState) => true,
+            onMoveShouldSetPanResponder: (evt, gestureState) => true,
+            onPanResponderGrant: (evt, gestureState) => {
+                const {pageX,pageY, locationX,locationY} = evt.nativeEvent;
+                console.log("--eric-->:pageX:" + pageX + "--pageY:" + pageY + "--locationX:" + locationX + "--locationY:" + locationY);
+                this.index = this._getIdByPosition(pageX,pageY);
+                //逻辑应该是点击的一瞬间，判定是第几个 (parseInt(i/4))*90,left:(i%4)*this.widthSreen}
+                this.preX = (this.index%4)*this.widthSreen;
+                this.preY = (parseInt(this.index/4))*90 + 10;
+                //get the taped item and highlight it
+                let item = this.items[this.index];
+                if(item!=null){
+                    item.setNativeProps({
+                        style: {
+                            shadowColor: "#000",
+                            shadowOpacity: 0.3,
+                            shadowRadius: 5,
+                            shadowOffset: {height: 0, width: 2},
+                            elevation: 5
+                        }
+                    });
+                }
+            },
+            onPanResponderMove: (evt, gestureState) => {
+                let left = this.preX + gestureState.dx;
+                let top = this.preY + gestureState.dy;
+                console.log("--eric-->top:" + top + ":" + gestureState.dy);
+                let item = this.items[this.index];
+                if(item!=null) {
+                    item.setNativeProps({
+                        style: {left: left,top: top}
+                    });
+                }
+                let collideIndex = this._getIdByPosition(evt.nativeEvent.pageX,evt.nativeEvent.pageY);
+                if(collideIndex !== this.index && collideIndex !== -1) {
+                    let collideItem = this.items[collideIndex];
+                    if(collideItem!=null){
+                        collideItem.setNativeProps({
+                            style: {left: this._getLeftValueYById(this.index),top:this._getTopValueYById(this.index)}
+                        });
+                        //swap two values
+                        [this.items[this.index], this.items[collideIndex]] = [this.items[collideIndex], this.items[this.index]];
+                        [this.order[this.index], this.order[collideIndex]] = [this.order[collideIndex], this.order[this.index]];
+                        this.index = collideIndex;
+                    }
+                }
+            },
+            onPanResponderTerminationRequest: (evt, gestureState) => true,
+            onPanResponderRelease: (evt, gestureState) => {
+                const shadowStyle = {
+                    shadowColor: "#000",
+                    shadowOpacity: 0,
+                    shadowRadius: 0,
+                    shadowOffset: {height: 0, width: 0,},
+                    elevation: 0
+                };
+                let item = this.items[this.index];
+                //go back the correct position
+                if(item!=null){
+                    item.setNativeProps({
+                        style: {...shadowStyle, left: this._getLeftValueYById(this.index),top: this._getTopValueYById(this.index)}
+                    });
+                }
+                console.log(this.order);
+            },
+            onPanResponderTerminate: (evt, gestureState) => {
+                // Another component has become the responder, so this gesture
+                // should be cancelled
+            }
+        });
+
+        this.dsfectchData();
+        //this.props.navigation.setParams({navigatePress:this.update})
+        this.updateSkin("");
+    }
+
+    _getIdByPosition(pageX,pageY){
+        var id = -1;
+        const height = this.widthSreen;
+        if(pageX >= 10 && pageX < height*1+10 && pageY>=110 && pageY<=190)
+            id = 0;
+        else if(pageX >= height*1+10 && pageX < height*2+10 && pageY>=110 && pageY<=190)
+            id = 1;
+        else if(pageX >= height*2+10 && pageX < height*3+10 && pageY>=110 && pageY<=190)
+            id = 2;
+        else if(pageX >= height*3+10 && pageX < height*4+10 && pageY>=110 && pageY<=190)
+            id = 3;
+        else if(pageX >= 10 && pageX < height*1+10 && pageY>=200 && pageY<=280)
+            id = 4;
+        else if(pageX >= height*1+10 && pageX < height*2+10 && pageY>=200 && pageY<=280)
+            id = 5;
+        else if(pageX >= height*2+10 && pageX < height*3+10 && pageY>=200 && pageY<=280)
+            id = 6;
+        else if(pageX >= height*3+10 && pageX < height*4+10 && pageY>=200 && pageY<=280)
+            id = 7;
+        console.log("--eric-->:"+id);
+        return id;
+    }
+
+    _getLeftValueYById(id) {
+        const height = this.widthSreen;
+        return (id%4) * this.widthSreen;
+    }
+
+    _getTopValueYById(id) {
+        //const height = this.widthSreen;
+        return (parseInt(id/4))*90 + 10;
+    }
+
+    componentDidUpdate(){
+        for(var i=0;i<this.items.length;i++){
+            let item = this.items[i];
+            if(item!=null){
+                item.setNativeProps({
+                    style: {left: this._getLeftValueYById(i),top:this._getTopValueYById(i)}
+                });
+            }
+        }
+    }
+
+    //获取数据
+    dsfectchData(){
+        RNBridgeManager.queryAppList((error, result) => {
+            if(error){
+                console.log("---q--->error:" + error);
+            }else{
+                console.log("---q--->result:" + result);
+                console.log("---q--->height:" + SCREEN_HEIGHT);
+                var myapp = [];
+                for(var i=0;i<result.length;i++){
+                    if(result[i].myAppList == 1){
+                        myapp.push(result[i]);
+                        console.log( i + " : " + result[i].appId);
+                    }
+                }
+                this.myapps = myapp;
+                console.log("this.myapps" + this.myapps.length);
+                this.application = result;
+                this.setState({
+                    loadFlag: true,
+                });
+            }
+        });
+    }
+
+    _handleNoticeMsgVisible = (visible) => {
+        for(var i=0;i<this.order.length;i++){
+            this.myapps[i] = this.order[i];
+        }
+        this.order = [];
+        this.setState({ showMsg: visible });
+    }
+}
+
+/**
+ * 新增應用限制的警告訊息
+ * @param { visible, onShowMsg } props
+ */
+const NoticeMsg = (props) => (
+    <Modal
+        animationType='fade'
+        transparent={true}
+        visible={props.visible}
+        onShow={() => setTimeout(() => { props.onShowMsg(false) }, 1000)}
+        onRequestClose={() => props.onShowMsg(false)}
+    >
+        <View style={styles.noticeBg}>
+            <View style={styles.dialogBg}>
+                {/*<View style={styles.dialogTitle}>*/}
+                    {/*<Text style={styles.dialogTitleText}>提示</Text>*/}
+                {/*</View>*/}
+                <View style={styles.dialogContent}>
+                    <Text style={styles.dialogText}>首页最多添加4个应用</Text>
+                </View>
+                {/*<View style={styles.dialogBtn}>*/}
+                    {/*<Text style={styles.dialogBtnText}>知道了</Text>*/}
+                {/*</View>*/}
+            </View>
+        </View>
+    </Modal>
+)
+
+const styles = StyleSheet.create({
+
+    flex:{
+        flex: 1,
+        justifyContent: 'flex-start',
+        backgroundColor: '#E3E3E3',
+        //alignContent:'center',
+    },
+    head:{
+        flexDirection: 'row',
+        justifyContent:'space-between',
+    },
+    header:{
+        flexDirection: 'row',
+        //justifyContent:'space-between',
+        height:px2pt(67),
+        //backgroundColor: 'rgb(58, 170, 254)',
+        //alignItems: 'center',
+        //paddingTop:px2pt(20),
+    },
+    headerImage:{
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent:'space-between',
+        paddingTop:px2pt(35),
+    },
+    containerMy: {
+        height: px2pt(220),
+        backgroundColor: '#fff',
+        justifyContent: 'flex-start',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        width: Dimensions.get('window').width,
+    },
+    containerAll: {
+        height: px2pt(200),
+        backgroundColor: '#fff',
+        justifyContent: 'flex-start',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        width: Dimensions.get('window').width,
+        paddingTop:px2pt(20),
+    },
+    item: {
+        height: containerHeight,
+        width: containerWidth,
+        alignItems: 'center',
+        backgroundColor: '#F3F3F3',
+        marginLeft: px2pt(10),
+        marginTop: px2pt(10),
+        position: 'absolute',
+    },
+    itemTitle: {
+        fontSize: px2pt(14),
+        //backgroundColor: '#fff',
+        paddingLeft:px2pt(5),
+        //textAlign: 'center'
+    },
+    itemTitleDes: {
+        fontSize: px2pt(12),
+        //backgroundColor: 'gray',
+        color: 'gray',
+        //paddingLeft:px2pt(10),
+        //textAlign: 'center'
+    },
+    thumbnail: {
+        width: px2pt(50),
+        height: px2pt(50),
+        borderRadius:px2pt(25),
+        marginTop: px2pt(5)
+    },
+    imageRightTop:{
+        width: px2pt(18),
+        height: px2pt(18),
+        alignSelf:'flex-end',//自身右对齐
+        position: 'absolute',
+    },
+    buttonRightTop:{
+        width: px2pt(25),
+        height: px2pt(25),
+        alignSelf:'flex-end',//自身右对齐
+        position: 'absolute',
+    },
+    thumbnailInside:{
+        width: px2pt(30),
+        height: px2pt(30),
+        alignSelf:'center',//自身右对齐
+        marginTop: px2pt(14),
+        position: 'absolute',
+    },
+    /* NoticeMsg Style Start */
+    noticeBg: {
+        flex: 1,
+        //backgroundColor: "#000000AA",
+        padding: px2pt(24),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: px2pt(250)
+    },
+    dialogBg: {
+        backgroundColor: '#0f0f0f',
+        width: '55%',
+        opacity:0.6,
+        //shadowOpacity: 0.3,
+        //elevation: 4,
+/*        shadowOffset: {
+            height: 4,
+            width: 2,
+        },*/
+        borderRadius:px2pt(5),
+    },
+    dialogTitle: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 0,
+    },
+    dialogTitleText: {
+        //paddingTop: px2pt(20),
+        fontSize: px2pt(15),
+        color: "#292929",
+        fontWeight:'bold',
+    },
+    dialogContent: {
+        width: '100%',
+        //padding: px2pt(24),
+        //paddingTop: px2pt(20),
+        justifyContent: 'center',
+        alignItems: 'center',
+        //borderBottomWidth:1,
+        //borderColor:'#f0f0f0',
+        height:px2pt(30),
+    },
+    dialogText: {
+        color: "white",
+        fontSize: px2pt(15),
+    },
+    containerLoad: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#F5FCFF',
+    },
+    centering: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 8,
+    },
+    dialogBtn:{
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    dialogBtnText:{
+        color:'#3ba1ee',
+        fontSize: px2pt(15),
+        height:px2pt(40),
+        fontWeight:'bold',
+        paddingTop: px2pt(10)
+    }
+    /* NoticeMsg Style End */
+});
+
+module.exports = ApplicationCenterEdit;
